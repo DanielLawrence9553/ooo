@@ -64,9 +64,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/camoufox
-          key: camoufox-152.0.4-beta.28
-          restore-keys: |
-            camoufox-152.0.4-beta.28
+          key: camoufox-152.0.4-beta.28-v2
 
       - name: 安装 Python 依赖 + camoufox 二进制
         run: |
