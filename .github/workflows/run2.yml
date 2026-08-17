@@ -81,6 +81,7 @@ jobs:
             curl -fsSL -o /tmp/camoufox.zip "https://github.com/daijro/camoufox/releases/download/v${VER}/camoufox-${VER}-lin.x86_64.zip"
             python -c "import zipfile; zipfile.ZipFile('/tmp/camoufox.zip').extractall('${DEST}')"
             python -c "import json,pathlib; pathlib.Path('${DEST}/version.json').write_text(json.dumps({'version':'152.0.4','build':'beta.28','prerelease':True}))"
+            chmod -R 755 "${DEST}"
             printf '{"active_version":"browsers/official/%s"}\n' "${VER}" > "${CFX}/config.json"
             touch "${CFX}/.0.5_FLAG"
           fi
