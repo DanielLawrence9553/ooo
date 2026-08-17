@@ -62,7 +62,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install camoufox
-          camoufox fetch
+          camoufox sync
 
       - name: 检查 warp 出口
         run: |
