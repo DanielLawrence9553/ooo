@@ -10,7 +10,7 @@ on:
       workers:
         description: "并发数"
         required: true
-        default: "2"
+        default: "3"
 
 permissions:
   contents: read
