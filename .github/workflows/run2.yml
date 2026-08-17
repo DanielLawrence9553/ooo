@@ -1,0 +1,90 @@
+name: run2
+
+on:
+  schedule:
+    # 每 3 小时一次（避开整点，摊薄 GitHub 调度压力）
+    - cron: "13 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "注册数量"
+        required: true
+        default: "100"
+      workers:
+        description: "并发数"
+        required: true
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GITHUB_TOKEN: ${{ secrets.PAT }}
+    steps:
+      - name: 检出注册代码（私有 jjj）
+        uses: actions/checkout@v4
+        with:
+          repository: DanielLawrence9553/jjj
+          token: ${{ secrets.PAT }}
+          ref: master
+
+      - name: 安装 warp（Cloudflare WARP 代理）
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ jammy main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update
+          sudo apt-get install -y cloudflare-warp || true
+          sudo systemctl start warp-svc 2>/dev/null || warp-cli register 2>/dev/null || true
+
+      - name: 配置并启用 warp 代理
+        run: |
+          warp-cli --accept-tos registration new || true
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos proxy port 40000
+          warp-cli --accept-tos connect || true
+          for i in $(seq 1 60); do
+            if warp-cli --accept-tos status 2>&1 | grep -q "^Status update: Connected"; then break; fi
+            sleep 5
+          done
+          echo "--- warp status ---"
+          warp-cli --accept-tos status
+          for i in $(seq 1 12); do
+            curl -sf --proxy socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -qE "^(ip|warp)=" && break
+            sleep 5
+          done
+          curl -sS --proxy socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -E "^(ip|warp)=" || {
+            echo "::error::warp代理不可用(127.0.0.1:40000)"; warp-cli --accept-tos status; exit 1; }
+          echo "WARP_READY=1" >> $GITHUB_ENV
+
+      - name: 安装 Python 依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install camoufox
+          camoufox fetch
+
+      - name: 检查 warp 出口
+        run: |
+          curl -sS --proxy socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -E "^(ip|warp)="
+
+      - name: 注册（免费无鉴权服务商）
+        run: |
+          python main.py -n "${{ github.event.inputs.count }}" --workers "${{ github.event.inputs.workers }}" --continue-on-fail --verbose
+        env:
+          # 走 warp socks5 出口注册
+          REGISTRATION_DRIVER: "camoufox"
+          PROXY_POOL: "socks5://127.0.0.1:40000"
+          CAMOUFOX_USE_PROXY: "true"
+          # 免费无鉴权临时邮箱服务商：随机选一个（代码内 random.shuffle 顺序）
+          # 仅含无需 API Key/免登录的：tempmail/onesecmail/guerrillamail/dropmail/tempmailc/throwawaymail/catchmail/myagentinbox/mailtm/qxfy(公益实例)
+          EMAIL_SOURCE: "tempmail,onesecmail,guerrillamail,dropmail,tempmailc,throwawaymail,catchmail,myagentinbox,mailtm,qxfy"
+          USE_EMAIL_SERVICE: "true"
+          # 死域名持久化：明确被 OpenAI 拉黑的域名保存到 db 仓库，下次启动自动排除
+          DEAD_DOMAIN_REPO: "DanielLawrence9553/db"
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+          # 远端 Outlook 池关闭，注册邮箱只走上方无鉴权服务商
+          REMOTE_OUTLOOK_REPO: ""
