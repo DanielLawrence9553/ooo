@@ -86,3 +86,5 @@ jobs:
           # 死域名持久化：明确被 OpenAI 拉黑的域名保存到 db 仓库，下次启动自动排除
           DEAD_DOMAIN_REPO: "DanielLawrence9553/db"
           GITHUB_TOKEN: ${{ secrets.PAT }}
+          # 注册成功账号同步到网络数据库（复用 run.yml 同款 secret）
+          SESSION_DATABASE_URL: ${{ secrets.SESSION_DATABASE_URL }}
