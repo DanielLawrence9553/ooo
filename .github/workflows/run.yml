@@ -39,12 +39,18 @@ jobs:
 
       - name: 配置并启用 warp 代理
         run: |
-          warp-cli --accept-tos register 2>/dev/null || true
+          warp-cli --accept-tos register || true
           warp-cli --accept-tos mode proxy
           warp-cli --accept-tos proxy port 40000
-          warp-cli --accept-tos connect 2>/dev/null || true
-          sleep 3
-          warp-cli --accept-tos status || true
+          warp-cli --accept-tos connect
+          for i in $(seq 1 24); do
+            warp-cli status | grep -qi connected && break
+            sleep 5
+          done
+          echo "--- warp status ---"
+          warp-cli status
+          curl -sS --proxy socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -E "^(ip|warp)=" || {
+            echo "::error::warp代理不可用(127.0.0.1:40000)"; warp-cli status; exit 1; }
           echo "WARP_READY=1" >> $GITHUB_ENV
 
       - name: 安装 Python 依赖
@@ -56,7 +62,7 @@ jobs:
 
       - name: 检查 warp 出口
         run: |
-          curl -sS --proxy socks5://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -E "^(ip|warp)=" || echo "warp proxy not ready"
+          curl -sS --proxy socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -E "^(ip|warp)="
 
       - name: 注册
         run: |
