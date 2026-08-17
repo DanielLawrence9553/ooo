@@ -63,6 +63,8 @@ jobs:
           python main.py -n "${{ github.event.inputs.count }}" --workers "${{ github.event.inputs.workers }}" --continue-on-fail --verbose
         env:
           # 让程序走 warp socks5 出口注册
+          REGISTRATION_DRIVER: "camoufox"
           PROXY_POOL: "socks5://127.0.0.1:40000"
+          CAMOUFOX_USE_PROXY: "true"
           REMOTE_OUTLOOK_REPO: "DanielLawrence9553/db"
           REMOTE_OUTLOOK_FILE: "register.json"
