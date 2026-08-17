@@ -73,7 +73,7 @@ jobs:
 
       - name: 注册（免费无鉴权服务商）
         run: |
-          python main.py -n "${{ github.event.inputs.count }}" --workers "${{ github.event.inputs.workers }}" --continue-on-fail --verbose
+          python main.py -n "${{ github.event.inputs.count || '100' }}" --workers "${{ github.event.inputs.workers || '3' }}" --continue-on-fail --verbose
         env:
           # 走 warp socks5 出口注册
           REGISTRATION_DRIVER: "camoufox"
