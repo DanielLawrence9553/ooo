@@ -81,7 +81,7 @@ jobs:
           CAMOUFOX_USE_PROXY: "true"
           # 免费无鉴权临时邮箱服务商：随机选一个（代码内 random.shuffle 顺序）
           # 仅含无需 API Key/免登录的：tempmail/onesecmail/guerrillamail/dropmail/tempmailc/throwawaymail/catchmail/myagentinbox/mailtm/qxfy(公益实例)
-          EMAIL_SOURCE: "tempmail,onesecmail,guerrillamail,dropmail,tempmailc,throwawaymail,catchmail,myagentinbox,mailtm,qxfy"
+          EMAIL_SOURCE: "tempmail,onesecmail,dropmail,tempmailc,throwawaymail,catchmail,myagentinbox,mailtm,qxfy"
           USE_EMAIL_SERVICE: "true"
           # 死域名持久化：明确被 OpenAI 拉黑的域名保存到 db 仓库，下次启动自动排除
           DEAD_DOMAIN_REPO: "DanielLawrence9553/db"
