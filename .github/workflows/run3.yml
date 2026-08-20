@@ -1,0 +1,119 @@
+name: run3
+
+on:
+  workflow_dispatch:
+    inputs:
+      accounts_file:
+        description: "邮箱账号文件路径（相对 jjj 仓库根目录）"
+        required: false
+        default: "E:\\OUT-20260802-S100-00076.txt"
+      workers:
+        description: "并发数"
+        required: false
+        default: "8"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GITHUB_TOKEN: ${{ secrets.PAT }}
+    steps:
+      - name: 检出注册代码（私有 jjj）
+        uses: actions/checkout@v4
+        with:
+          repository: DanielLawrence9553/jjj
+          token: ${{ secrets.PAT }}
+          ref: master
+
+      - name: 检出数据仓库（db）
+        run: |
+          git clone --depth 1 https://x-access-token:${{ secrets.PAT }}@github.com/DanielLawrence9553/db.git db
+          cd db
+          git config user.name "Claude Auto"
+          git config user.email "claude@localhost"
+          git branch -m master main 2>/dev/null || true
+
+      - name: 安装 warp（Cloudflare WARP 代理）
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ jammy main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update
+          sudo apt-get install -y cloudflare-warp || true
+          sudo systemctl start warp-svc 2>/dev/null || warp-cli register 2>/dev/null || true
+
+      - name: 配置并启用 warp 代理
+        run: |
+          warp-cli --accept-tos registration new || true
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos proxy port 40000
+          warp-cli --accept-tos connect || true
+          for i in $(seq 1 60); do
+            if warp-cli --accept-tos status 2>&1 | grep -q "^Status update: Connected"; then break; fi
+            sleep 5
+          done
+          curl -sS --proxy socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -E "^(ip|warp)=" || {
+            echo "::error::warp代理不可用"; exit 1; }
+
+      - name: 缓存 camoufox 浏览器二进制
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/camoufox
+          key: camoufox-152.0.4-beta.28-v2
+
+      - name: 安装 Python 依赖 + camoufox 二进制
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install camoufox==0.5.4
+          CFX="${HOME}/.cache/camoufox"
+          if [ ! -f "${CFX}/config.json" ]; then
+            VER="152.0.4-beta.28"
+            DEST="${CFX}/browsers/official/${VER}"
+            mkdir -p "${DEST}"
+            curl -fsSL -o /tmp/camoufox.zip "https://github.com/daijro/camoufox/releases/download/v${VER}/camoufox-${VER}-lin.x86_64.zip"
+            python -c "import zipfile; zipfile.ZipFile('/tmp/camoufox.zip').extractall('${DEST}')"
+            python -c "import json,pathlib; pathlib.Path('${DEST}/version.json').write_text(json.dumps({'version':'152.0.4','build':'beta.28','prerelease':True}))"
+            chmod -R 755 "${DEST}"
+            printf '{"active_version":"browsers/official/%s"}\n' "${VER}" > "${CFX}/config.json"
+            touch "${CFX}/.0.5_FLAG"
+          fi
+
+      - name: 拉取邮箱账号源（mail.json 从 db 仓库）
+        run: |
+          if [ -f db/mail.json ]; then
+            cp db/mail.json ./mail_accounts.txt
+            echo "已从 db 仓库拉取 mail.json"
+          else
+            echo "::warning::db/mail.json 不存在，使用默认账号文件"
+          fi
+
+      - name: 邮箱体检（判定死活/是否注册）
+        run: |
+          ACCOUNTS_FILE="${{ github.event.inputs.accounts_file || 'mail_accounts.txt' }}"
+          if [ ! -f "$ACCOUNTS_FILE" ]; then
+            echo "::error::账号文件不存在: $ACCOUNTS_FILE"
+            exit 1
+          fi
+          python check_openai_account_status.py "$ACCOUNTS_FILE" --workers "${{ github.event.inputs.workers || '8' }}"
+
+      - name: 上传体检结果到 db 仓库
+        run: |
+          for f in 邮箱体检_活.txt 邮箱体检_死.txt 邮箱体检_未注册.txt 邮箱体检_取信失败.txt; do
+            if [ -f "$f" ]; then
+              # 统一命名，便于 run4 读取
+              case "$f" in
+                邮箱体检_活.txt) cp "$f" db/final_alive.txt ;;
+                邮箱体检_死.txt) cp "$f" db/final_dead.txt ;;
+                邮箱体检_未注册.txt) cp "$f" db/final_not_registered.txt ;;
+                邮箱体检_取信失败.txt) cp "$f" db/final_fetch_failed.txt ;;
+              esac
+            fi
+          done
+          cd db
+          git add -A
+          git commit -m "auto: run3 邮箱体检 $(date -u +%Y%m%d-%H%M%S)" || true
+          git push origin main

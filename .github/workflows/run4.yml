@@ -1,0 +1,109 @@
+name: run4
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: "并发数"
+        required: false
+        default: "3"
+      only:
+        description: "只处理哪类（默认两类都跑）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  revive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GITHUB_TOKEN: ${{ secrets.PAT }}
+    steps:
+      - name: 检出注册代码（私有 jjj）
+        uses: actions/checkout@v4
+        with:
+          repository: DanielLawrence9553/jjj
+          token: ${{ secrets.PAT }}
+          ref: master
+
+      - name: 检出数据仓库（db）获取 run3 体检结果
+        run: |
+          git clone --depth 1 https://x-access-token:${{ secrets.PAT }}@github.com/DanielLawrence9553/db.git db
+          [ -f db/final_alive.txt ] && cp db/final_alive.txt 邮箱体检_活.txt || touch 邮箱体检_活.txt
+          [ -f db/final_not_registered.txt ] && cp db/final_not_registered.txt 邮箱体检_未注册.txt || touch 邮箱体检_未注册.txt
+          [ -f db/final_dead.txt ] && cp db/final_dead.txt 邮箱体检_死.txt || touch 邮箱体检_死.txt
+          echo "活 $(grep -c '@' 邮箱体检_活.txt || echo 0) / 未注册 $(grep -c '@' 邮箱体检_未注册.txt || echo 0)"
+
+      - name: 安装 warp（Cloudflare WARP 代理）
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ jammy main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+          sudo apt-get update
+          sudo apt-get install -y cloudflare-warp || true
+          sudo systemctl start warp-svc 2>/dev/null || warp-cli register 2>/dev/null || true
+
+      - name: 配置并启用 warp 代理
+        run: |
+          warp-cli --accept-tos registration new || true
+          warp-cli --accept-tos mode proxy
+          warp-cli --accept-tos proxy port 40000
+          warp-cli --accept-tos connect || true
+          for i in $(seq 1 60); do
+            if warp-cli --accept-tos status 2>&1 | grep -q "^Status update: Connected"; then break; fi
+            sleep 5
+          done
+          curl -sS --proxy socks5h://127.0.0.1:40000 https://www.cloudflare.com/cdn-cgi/trace | grep -E "^(ip|warp)=" || {
+            echo "::error::warp代理不可用"; exit 1; }
+
+      - name: 缓存 camoufox 浏览器二进制
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/camoufox
+          key: camoufox-152.0.4-beta.28-v2
+
+      - name: 安装 Python 依赖 + camoufox 二进制
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install camoufox==0.5.4
+          CFX="${HOME}/.cache/camoufox"
+          if [ ! -f "${CFX}/config.json" ]; then
+            VER="152.0.4-beta.28"
+            DEST="${CFX}/browsers/official/${VER}"
+            mkdir -p "${DEST}"
+            curl -fsSL -o /tmp/camoufox.zip "https://github.com/daijro/camoufox/releases/download/v${VER}/camoufox-${VER}-lin.x86_64.zip"
+            python -c "import zipfile; zipfile.ZipFile('/tmp/camoufox.zip').extractall('${DEST}')"
+            python -c "import json,pathlib; pathlib.Path('${DEST}/version.json').write_text(json.dumps({'version':'152.0.4','build':'beta.28','prerelease':True}))"
+            chmod -R 755 "${DEST}"
+            printf '{"active_version":"browsers/official/%s"}\n' "${VER}" > "${CFX}/config.json"
+            touch "${CFX}/.0.5_FLAG"
+          fi
+
+      - name: 活账号刷新 cookie + 未注册账号注册，统一写网络库
+        run: |
+          ONLY="${{ github.event.inputs.only }}"
+          EXTRA=""
+          [ "$ONLY" = "alive" ] && EXTRA="--only alive"
+          [ "$ONLY" = "unregistered" ] && EXTRA="--only unregistered"
+          python revive_and_register.py --workers "${{ github.event.inputs.workers || '3' }}" $EXTRA
+        env:
+          REGISTRATION_DRIVER: "camoufox"
+          PROXY_POOL: "socks5://127.0.0.1:40000"
+          CAMOUFOX_USE_PROXY: "true"
+          SESSION_DATABASE_URL: ${{ secrets.SESSION_DATABASE_URL }}
+
+      - name: 上传运行结果到 db 仓库
+        if: always()
+        run: |
+          for f in 刷新_活.txt 注册_成功.txt 处理_失败.txt; do
+            [ -f "$f" ] && cp "$f" db/
+          done
+          cd db
+          git config user.name "Claude Auto"
+          git config user.email "claude@localhost"
+          git add -A
+          git commit -m "auto: run4 刷新/注册结果 $(date -u +%Y%m%d-%H%M%S)" || true
+          git push origin main
