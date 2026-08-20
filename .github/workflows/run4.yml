@@ -29,13 +29,40 @@ jobs:
           token: ${{ secrets.PAT }}
           ref: master
 
-      - name: 检出数据仓库（db）获取 run3 体检结果
+      - name: 检出数据仓库（db）+ 生成待处理名单（排除 run3 判死的账号）
         run: |
           git clone --depth 1 https://x-access-token:${{ secrets.PAT }}@github.com/DanielLawrence9553/db.git db
-          [ -f db/final_alive.txt ] && cp db/final_alive.txt 邮箱体检_活.txt || touch 邮箱体检_活.txt
-          [ -f db/final_not_registered.txt ] && cp db/final_not_registered.txt 邮箱体检_未注册.txt || touch 邮箱体检_未注册.txt
-          [ -f db/final_dead.txt ] && cp db/final_dead.txt 邮箱体检_死.txt || touch 邮箱体检_死.txt
-          echo "活 $(grep -c '@' 邮箱体检_活.txt || echo 0) / 未注册 $(grep -c '@' 邮箱体检_未注册.txt || echo 0)"
+          if [ ! -f db/register.json ]; then
+            echo "::error::db/register.json 不存在"
+            exit 1
+          fi
+          # 从 register.json 提取 used/failed 账号的主邮箱+5别名（与体检脚本同规则）
+          python - <<'EOF'
+          import json
+          with open('db/register.json', encoding='utf-8') as f:
+              items = json.load(f)
+          dead = set()
+          try:
+              with open('db/final_dead.txt', encoding='utf-8') as f:
+                  dead = {line.strip().lower() for line in f if '@' in line}
+          except FileNotFoundError:
+              pass
+          todo = []
+          for item in items:
+              if str(item.get('status') or 'available') not in ('used', 'failed'):
+                  continue
+              email = str(item.get('email') or '').strip()
+              if not email or email.lower() in dead:
+                  continue
+              local, _, domain = email.partition('@')
+              todo.extend([email] + [f'{local}+{i}@{domain}' for i in range(1, 6)])
+          todo = [e for e in todo if e.lower() not in dead]
+          with open('邮箱体检_活.txt', 'w', encoding='utf-8') as f:
+              f.write('\n'.join(todo) + '\n')
+          open('邮箱体检_未注册.txt', 'w').close()
+          open('邮箱体检_死.txt', 'w').close()
+          print(f'待处理 {len(todo)} 个地址（已排除 run3 判死的 {len(dead)} 个）')
+          EOF
 
       - name: 安装 warp（Cloudflare WARP 代理）
         run: |
