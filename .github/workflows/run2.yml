@@ -104,5 +104,4 @@ jobs:
           DEAD_DOMAIN_REPO: "DanielLawrence9553/db"
           GITHUB_TOKEN: ${{ secrets.PAT }}
           # 注册成功账号同步到网络数据库（复用 run.yml 同款 secret）
-          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_TOKEN: ${{ secrets.UPSTASH_REDIS_TOKEN }}
+          SESSION_DATABASE_URL: ${{ secrets.SESSION_DATABASE_URL }}

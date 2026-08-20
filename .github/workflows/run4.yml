@@ -120,8 +120,7 @@ jobs:
           REGISTRATION_DRIVER: "camoufox"
           PROXY_POOL: "socks5://127.0.0.1:40000"
           CAMOUFOX_USE_PROXY: "true"
-          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_TOKEN: ${{ secrets.UPSTASH_REDIS_TOKEN }}
+          SESSION_DATABASE_URL: ${{ secrets.SESSION_DATABASE_URL }}
 
       - name: 上传运行结果到 db 仓库
         if: always()
