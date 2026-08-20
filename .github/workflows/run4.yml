@@ -52,10 +52,14 @@ jobs:
               if str(item.get('status') or 'available') not in ('used', 'failed'):
                   continue
               email = str(item.get('email') or '').strip()
-              if not email or email.lower() in dead:
+              if not email:
                   continue
               local, _, domain = email.partition('@')
+              # 主邮箱+5别名全部展开，不做整组预排除——
+              # register.json 的 failed 只代表某次尝试失败，不能判定哪个具体账号死；
+              # 死号只信 account_deactivated 错误页（final_dead.txt，逐地址粒度）。
               todo.extend([email] + [f'{local}+{i}@{domain}' for i in range(1, 6)])
+          # 逐地址排除死号：主号死不连坐别名（别名是独立 ChatGPT 账号，共用收件箱）
           todo = [e for e in todo if e.lower() not in dead]
           with open('邮箱体检_活.txt', 'w', encoding='utf-8') as f:
               f.write('\n'.join(todo) + '\n')
