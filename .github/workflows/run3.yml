@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       accounts_file:
-        description: "邮箱账号文件路径（默认 mail_accounts.txt，即 db/mail.json 拉下来的副本）"
+        description: "邮箱账号文件路径（默认 pool_accounts.json，即 db/register.json 拉下来的副本）"
         required: false
-        default: "mail_accounts.txt"
+        default: "pool_accounts.json"
       workers:
         description: "并发数"
         required: false
