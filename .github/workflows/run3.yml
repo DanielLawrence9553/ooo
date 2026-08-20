@@ -82,32 +82,23 @@ jobs:
             touch "${CFX}/.0.5_FLAG"
           fi
 
-      - name: 拉取邮箱账号源（mail.json）+ 排除基（register.json）
+      - name: 拉取账号池（db/register.json，只体检已消耗的账号）
         run: |
-          if [ -f db/mail.json ]; then
-            cp db/mail.json ./mail_accounts.txt
-            echo "已从 db 仓库拉取 mail.json"
-          else
-            echo "::warning::db/mail.json 不存在，使用默认账号文件"
+          if [ ! -f db/register.json ]; then
+            echo "::error::db/register.json 不存在"
+            exit 1
           fi
-          # register.json 是未注册的池子，判活时必须排除，避免误判
-          if [ -f db/register.json ]; then
-            cp db/register.json ./register_exclude.json
-            echo "已拉取 register.json 作为排除基（未注册池）"
-          else
-            echo "::warning::db/register.json 不存在，不排除任何邮箱"
-          fi
+          cp db/register.json ./pool_accounts.json
+          echo "已拉取 register.json，体检脚本将自动过滤 status=used/failed 的账号"
 
-      - name: 邮箱体检（判定死活/是否注册，排除未注册池）
+      - name: 邮箱体检（判定死活/是否注册，仅已消耗账号）
         run: |
-          ACCOUNTS_FILE="${{ github.event.inputs.accounts_file || 'mail_accounts.txt' }}"
+          ACCOUNTS_FILE="${{ github.event.inputs.accounts_file || 'pool_accounts.json' }}"
           if [ ! -f "$ACCOUNTS_FILE" ]; then
             echo "::error::账号文件不存在: $ACCOUNTS_FILE"
             exit 1
           fi
-          EXCLUDE_ARG=""
-          [ -f register_exclude.json ] && EXCLUDE_ARG="--exclude register_exclude.json"
-          python check_openai_account_status.py "$ACCOUNTS_FILE" --workers "${{ github.event.inputs.workers || '8' }}" $EXCLUDE_ARG
+          python check_openai_account_status.py "$ACCOUNTS_FILE" --workers "${{ github.event.inputs.workers || '8' }}"
 
       - name: 上传体检结果到 db 仓库
         run: |
