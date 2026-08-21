@@ -124,6 +124,7 @@ jobs:
           REGISTRATION_DRIVER: "camoufox"
           PROXY_POOL: "socks5://127.0.0.1:40000"
           CAMOUFOX_USE_PROXY: "true"
+          DEAD_ACCOUNT_REPO: "DanielLawrence9553/db"
           SESSION_DATABASE_URL: ${{ secrets.SESSION_DATABASE_URL }}
 
       - name: 上传运行结果到 db 仓库
